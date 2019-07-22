@@ -1,0 +1,272 @@
+---
+title: "Statistical Inference with GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(tidyverse)
+```
+
+### Load data
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The General Social Survey (GSS) is a large-scale survey that began to facilitate social indicator research. Specifically, taken from the GSS [project description](http://www.norc.org/Research/Projects/Pages/general-social-survey.aspx)...
+
+> The GSS aims to gather data on contemporary American society in order to monitor and explain trends and constants in attitudes, behaviors, and attributes; to examine the structure and functioning of society in general as well as the role played by relevant subgroups; to compare the United States to other societies in order to place American society in comparative perspective and develop cross-national models of human society; and to make high-quality data easily accessible to scholars, students, policy makers, and others, with minimal cost and waiting.
+
+In this document, we are working with the 1972-2012 cumulative file of the GSS. Each observation is an interview, and samples selected are randomly sampled English-speakers (and Spanish-speakers starting in 2006) 18 years of age or older, living in non-institutional arrangements within the US. 
+
+According to the documentation, respondents were randomly sampled with little variation in sampling methods throughout the years. As such, we can reliably generalize findings to the greater US population of English-speakers (and Spanish speakers as long as we use data after 2006.) However, we cannot assign causality based on our findings, since this study is merely observational in its design (not experimental).
+
+* * *
+
+## Part 2: Research question
+
+How much do opinions on controversial issues differ between people who have had children at different points in their lives? One of the biggest personal life decisions people can make when or if they feel ready to have children. Most (but certainly not all) of the time, this is a conscious decision made when a couple feels ready (financially and personally) and willing to make the commitment to raise a child. Sometimes, couples or women alone are forced to have their first child after irresponsibility or, unfortunately, by force and violence. 
+
+Are opinions on controversial issues different between groups of people who make this decision earlier or later? This is a very broad question to pose, so I'll be focusing predominantly on issues regarding abortion, premarital sex, and homosexual relations.
+
+Variables of interest...
+- `abany` - Abortion if woman wants for any reason
+- `premarsx` - Sex before marriage
+- `homosex` - Homosexual sex relations
+- `agekdbrn` - Respondent age when 1st child born
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+Let's start by taking a look at the distribution of ages when 1st child was born. It's unclear whether NA values are missing due to having no children or refusal to response, so these values are filtered out.
+
+```{r}
+# Filtering out NAs
+gss_agekd <- gss %>% filter(!is.na(agekdbrn))
+# Creating plot
+age_plot <- ggplot(gss_agekd,aes(agekdbrn)) + geom_histogram(bins=25)
+age_plot <- age_plot + labs(title='Distribution of Ages when First Child was Born', x = 'Age', y='Count')
+age_plot <- age_plot + annotate("text", x=35, y=4500, label = "Nearly normal\n Slightly right skewed distribution")
+age_plot
+
+```
+
+I'll divide these into three buckets based on age. These buckets are meant to help aggregate data, and do not reflect my opinion on age when having a first child.
+
+```{r}
+b = c(0,24,35,100)
+l = c('younger','average','older')
+gss_agekd$agekdbrn_cat <- cut(x = gss_agekd$agekdbrn, breaks = b, labels = l)
+```
+
+Now skimming summary statistic count on the variables of interest...
+
+```{r}
+gss_trunc <- gss_agekd %>% select(agekdbrn,agekdbrn_cat,abany,premarsx,homosex)
+
+# Creating a function to facilitate comparison
+group_2_summ <- function (df, group_var1, group_var2) {
+  group_var1 <- enquo(group_var1)
+  group_var2 <- enquo(group_var2)
+  df %>%
+  group_by(!!group_var1,!!group_var2) %>%
+  summarise(n = n())
+}
+
+# Abortion Responses
+group_2_summ(gss_trunc %>% filter(!is.na(abany)),agekdbrn_cat,abany)
+
+# Premarital Sex Responses
+group_2_summ(gss_trunc %>% filter(!is.na(premarsx)),agekdbrn_cat,premarsx)
+
+# Homosexual Sex Responses
+group_2_summ(gss_trunc %>% filter(!is.na(homosex)),agekdbrn_cat,homosex)
+
+```
+
+So it looks like we have 2 levels for `abany` and multiple levels for `premarsx` and `homosex`. Also note that our data fulfills the independence sampling without replacement condition of having all samples under 10% of the population at large (population of all English & Spanish speakers in the US) and the sample size and skew condition since no groups are less than 10. 
+
+### Visualizing Age Spread Between Responses
+
+Let's inspect the spread of age between each variable's responses using side-by-side box plots.
+
+```{r}
+abort_box <- ggplot(gss_trunc %>%
+                      filter(!is.na(abany)),aes(abany,agekdbrn))+geom_boxplot()
+abort_box + labs(title='Age by Abortion')
+```
+
+**Observation**: It appears that those who believe that women *should not* be able to obtain legal abortion tend to have had their first child at a **slightly younger** age than people who think otherwise. The former's median is lower, and the IQR is slightly tighter.
+
+```{r}
+premar_box <- ggplot(gss_trunc %>%
+                      filter(!is.na(premarsx)),aes(premarsx,agekdbrn))+geom_boxplot()
+premar_box + labs(title='Age by Premarital Sex')
+```
+
+**Observation**: It appears that the `Always Wrong` and `Almst Always Wrg` groups are very similar compared to the other two groups. The `Sometimes Wrong` group has a wider spread (larger IQR) than the others, and the `Not Wrong At All` group has larger outliers. These boxes look very similar to one another, and merely suggest to me that people who answered `Sometimes Wrong` tended to have their first child at a wider spread of ages than the others, given its IQR is larger than the others.
+
+
+```{r}
+homosx_box <- ggplot(gss_trunc %>%
+                      filter(!is.na(homosex)),aes(homosex,agekdbrn))+geom_boxplot()
+homosx_box + labs(title='Age by Homosexual Relations')
+```
+
+**Observation**: The `Always Wrong` group appears to have the lowest median and tightest spread per the IQR than the other three groups, suggesting that those who strongly believe that homosexual relations are always wrong tended to have their first child at an earlier age than those who responded differently. 
+
+
+* * *
+
+## Part 4: Inference
+
+---
+
+### Opinion on Abortion
+
+#### Hypotheses
+
+$H_0: p_1 = p_2$
+
+$H_A: p_1 \ne p_2$
+
+For this inference test, I'm going to focus on only the `younger` and `average` groups since they have the largest and most comparable sample sizes.
+
+#### Conditions
+
+1. Independence
+  - Respondents were randomly sampled
+  - Sampling was performed without replacement each year, but our total sample size was well under 10% of all English/Spanish speakers in the US 18 years of age and above
+  - It is reasonable to assume groups are independent of one another (the answers of one group doesn't influence the answers of another group)
+  - However, note that these responses are cumulative over the period between 1972 - 2012, so there is a chance that respondents were sampled more than once across the years, but I believe this risk is immaterial given the random sampling methodology
+2. Sample Size/Skew
+  - In the **EDA** section above, we confirmed that we have at least 10 responses for each group. 
+
+#### Methods
+
+Since the focus is merely on two groups on a binary categorical variable, we will perform a hypothesis test comparing two proportions and then construct a 95% confidence interval. In this case, we will say that a success is when a respondent answers `Yes`, meaning they believe that women should be able to obtain legal abortion for any reason.
+
+#### Inference
+
+```{r}
+inf_1 <- gss_trunc %>% filter(agekdbrn_cat != 'older', !is.na(abany))
+drop
+inf_1 <- droplevels(inf_1)
+```
+
+```{r}
+# Performing two-sided hypothesis test
+inference(y = abany, x = agekdbrn_cat, data = inf_1, type = 'ht', statistic = 'proportion', method = 'theoretical', alternative = 'twosided', success = 'Yes', null=0)
+```
+Note the p-value of ~ 0.
+```{r}
+inference(y = abany, x = agekdbrn_cat, data = inf_1, type = 'ci', statistic = 'proportion', method = 'theoretical', success = 'Yes')
+```
+
+#### Interpretation
+
+We saw that the hypothesis test resulted in a p-value of nearly 0, and we may reject the null hypothesis in favor of the alternative. In other words, the data provide convincing evidence that the proportion of people who had their child earlier (`younger`) and believe that abortion for any reason is okay (`abany` = `Yes`) is *not the same* as the proportion of people who had their child later.
+
+From the 95% confidence interval constructed, we are 95% confident that the difference between these two proportions ($p_{younger} - p_{average}$) is between -10.75% and -6.73%. Note this is merely *suggesting* that people who had their child at an earlier age are more likely to believe that abortion for any reason is not okay.
+
+---
+
+### Opinion on Premarital Sex
+
+#### Hypotheses
+
+$H_0:$ Age first child was born and thoughts on pre-marital sex are *independent*
+
+$H_A:$ Age first child was born and thoughts on pre-marital sex are *dependent*
+
+Since `premarsx` has multiple levels, we will perform a Chi-Square independence test between all levels of `agekdbrn_cat` and `premarsx` to determine whether these two variables are independent.
+
+#### Conditions
+
+1. Independence
+  - Respondents were randomly sampled
+  - Sampling was performed without replacement each year, but our total sample size was well under 10% of all English/Spanish speakers in the US 18 years of age and above
+  - It is reasonable to assume groups are independent of one another (the answers of one group doesn't influence the answers of another group)
+  - However, note that these responses are cumulative over the period between 1972 - 2012, so there is a chance that respondents were sampled more than once across the years, but I believe this risk is immaterial given the random sampling methodology
+2. Sample Size/Skew
+  - In the **EDA** section above, we confirmed that we have at least 10 responses for each group. 
+
+#### Methods
+
+When performing the Chi-Square independence test, we are limited to hypothesis testing to test for independence between two variables of multiple levels. As such, no confidence interval can be computed.
+
+#### Inference
+
+```{r}
+# Filtering out NAs
+inf_2 <- gss_trunc %>% filter(!is.na(premarsx))
+# Creating Contingency Table
+contin_tbl <- table(inf_2$agekdbrn_cat, inf_2$premarsx)
+# Selecting only columns that have values 
+contin_tbl <- contin_tbl[,unique(inf_2$premarsx)]
+contin_tbl
+chisq.test(contin_tbl)
+```
+
+
+#### Interpretation
+
+This Chi-Squared independence test resulted in a p-value of nearly 0. Since this is well below our standard significance level of 5%, we may reject the null hypothesis in favor of the alternative. In other words, our data provides convincing evidence that age of when an individual had their first child and opinion on premarital sex based on `premarsx` are *not independent*.
+
+---
+### Opinion on Homosexual Relations
+
+#### Hypotheses
+
+$H_0:$ Age first child was born and thoughts on homosexual relations are *independent*
+
+$H_A:$ Age first child was born and thoughts on homosexual relations are *dependent*
+
+#### Conditions
+
+1. Independence
+  - Respondents were randomly sampled
+  - Sampling was performed without replacement each year, but our total sample size was well under 10% of all English/Spanish speakers in the US 18 years of age and above
+  - It is reasonable to assume groups are independent of one another (the answers of one group doesn't influence the answers of another group)
+  - However, note that these responses are cumulative over the period between 1972 - 2012, so there is a chance that respondents were sampled more than once across the years, but I believe this risk is immaterial given the random sampling methodology
+2. Sample Size/Skew
+  - In the **EDA** section above, we confirmed that we have at least 10 responses for each group. 
+
+#### Methods
+
+When performing the Chi-Square independence test, we are limited to hypothesis testing to test for independence between two variables of multiple levels. As such, no confidence interval can be computed.
+
+#### Inference
+
+```{r}
+# Filtering out NAs
+inf_3 <- gss_trunc %>% filter(!is.na(homosex))
+# Creating contingency table
+contin_tbl <- table(inf_3$agekdbrn_cat, inf_3$homosex)
+# Selecting only columns with responses
+contin_tbl <- contin_tbl[,unique(inf_3$homosex)]
+contin_tbl
+chisq.test(contin_tbl)
+```
+
+#### Interpretation
+
+Per the Chi-Square independence test results above, we see that the p-value is nearly 0 as well. This allows us to reject the null hypothesis in favor of the alternative. In other words, the data provide convincing evidence that age of when having first child and opinion on homosexual relations based on `homosex` are *not independent*.
